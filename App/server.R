@@ -249,6 +249,22 @@ historic.total <- function(score1, score2) {
   
 }  
 
+#Example table for documentation page
+example.table <- function() {
+  par(font.lab=2)
+  p <- plot(0:9, 0:9, type='n',xlim=c(0,9),ylim=c(0,9),xlab='', ylab='Patriots', axes=FALSE)
+  points(4,2,pch=19,col="firebrick1",cex=4)
+  abline(v=seq(.5,8.5,1))
+  abline(h=seq(.5,8.5,1))
+  axis(side=3, at=0:9, tick=FALSE, labels=0:9)
+  axis(side=2, at=0:9, tick=FALSE, labels=9:0)
+  mtext('Cowboys', side=3, line=3, font=2)
+  box()
+  
+  return(p)  
+  
+}
+
 
 
 ##Shiny server output
@@ -268,6 +284,9 @@ shinyServer(
     })
     output$table.hist <- renderPlot({ 
       historic.table(input$hor,input$ver)
+    })
+    output$example <- renderPlot({ 
+      example.table()
     })
     } 
 )

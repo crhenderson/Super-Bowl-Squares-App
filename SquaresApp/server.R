@@ -1,14 +1,13 @@
 library(xtable)
-library(dplyr)
 library(reshape2)
 library(ggplot2)
 library(nnet)
 
 #Read in data and multinomial models
-data <- readRDS("../Data/Score_Data2.RDS")
-fitN <- readRDS("../Models/nextfitN.RDS")
-fitA <- readRDS("../Models/nextfitA.RDS")
-fitB <- readRDS("../Models/nextfitB.RDS")
+data <- readRDS("Score_Data2.RDS")
+fitN <- readRDS("nextfitN.RDS")
+fitA <- readRDS("nextfitA.RDS")
+fitB <- readRDS("nextfitB.RDS")
 
 #Turn off Scientific Notation
 options(scipen=999)
@@ -62,8 +61,8 @@ options <- data.frame(new.score1 = c(rep(0,10),rep(1,10),rep(2,10),rep(3,10),rep
                       new.score2 = rep(0:9,10))
 
 ##Merge predicted probabilities with score combinations
-final <- merge(options,squares,by=c("new.score1","new.score2"),all.x=T)%>%
-  select(new.score1, new.score2, Probability)
+final <- merge(options,squares,by=c("new.score1","new.score2"),all.x=T)
+final <- final[,c("new.score1", "new.score2", "Probability")]
 
 final$Probability[is.na(final$Probability)] <- 0
 final$Probability <- round(final$Probability,1)
@@ -90,82 +89,36 @@ return(p)
 
 
 
-# final.score.tables <- function(score1, score2) {
-#   sc1 <- score1%%10
-#   sc2 <- score2%%10
-# 
-#   games <- data %>%
-#     filter(Tm_Last == sc1, Opp_Last == sc2)%>%
-#     select(Game)%>%
-#     unique
-#   
-#   final.scores <- data%>%
-#     merge(games,by="Game")%>%
-#     filter(Final_Score == 1)%>%
-#     group_by(Tm_Last, Opp_Last)%>%
-#     summarise(N=n())%>%
-#     as.data.frame()%>%
-#     mutate(Prob = N/sum(N)*100)%>%
-#     select(Tm_Last,Opp_Last,Prob)
-# 
-#   options <- data.frame(Tm_Last = c(rep(0,10),rep(1,10),rep(2,10),rep(3,10),rep(4,10),rep(5,10),rep(6,10),rep(7,10),rep(8,10),rep(9,10)),
-#                         Opp_Last = rep(0:9,10))
-#   final <- merge(options,final.scores,by=c("Tm_Last","Opp_Last"),all.x=T)%>%
-#        select(Tm_Last, Opp_Last, Prob)
-#   
-#   final$Prob[is.na(final$Prob)] <- 0
-# 
-#   out1<-dcast(data=final,formula=Tm_Last~Opp_Last, value.var="Prob",fun.aggregate=sum)
-#   rownames(out1) <- out1[,1]
-#   out1 <- out1[,-1]
-#   #out1 <- FlexTable(out1, add.rownames = T)
-#   
-#   return(out1)
-# }
-
-
-
-
 ##Create table with historic game occurances
-historic.data <- data %>% 
-    filter(Score_Type != 'Start of Game')%>%
-    group_by(Game, Tm_Last, Opp_Last)%>%
-    summarise(N=n())%>%
-    mutate(Combo = paste(Tm_Last, Opp_Last, sep=' & '))%>%
-    as.data.frame%>%
-    select(Combo, Tm_Last, Opp_Last, Game, N)
+historic.data <- data[data$Score_Type != 'Start of Game',]
+historic.data <- aggregate(Score~Game+ Tm_Last+ Opp_Last, data=historic.data,length)
+names(historic.data)[4] <- "N"
+historic.data$Combo <- paste(historic.data$Tm_Last, historic.data$Opp_Last, sep=' & ')
+historic.data <- historic.data[,c("Combo", "Tm_Last", "Opp_Last", "Game", "N")]
   
-  unique.games <- historic.data%>%
-    select(Game)%>%
-    unique
+unique.games <- unique(historic.data$Game)
   
-  unique.combo <- historic.data%>%
-    select(Combo, Tm_Last, Opp_Last)%>%
-    unique%>%
-    arrange(Combo)
-  
-  together <- merge(unique.games,unique.combo)%>%
-    merge(historic.data,by=c("Game","Combo","Tm_Last","Opp_Last"),all.x=T)
-  
-  together$N[is.na(together$N)] <- 0
-  
-  historic.data <- together%>%  
-    group_by(Combo,Tm_Last,Opp_Last,N)%>%
-    summarise(Games = n())
+unique.combo <- historic.data[,c("Combo", "Tm_Last", "Opp_Last")]
+unique.combo <- unique(unique.combo[order(unique.combo$Combo),] )
+
+together <- merge(unique.games,unique.combo)
+names(together)[1] <- "Game"
+together <- merge(together,historic.data,by=c("Game","Combo","Tm_Last","Opp_Last"),all.x=T)
+together$N[is.na(together$N)] <- 0
+
+historic.data <- aggregate(Game~Combo+Tm_Last+Opp_Last+N, data=together, length)
+names(historic.data)[5] <- "Games"
   
 games <- length(unique(data$Game))
 
-  rm(together); rm(unique.combo); rm(unique.games);
+rm(together); rm(unique.combo); rm(unique.games);
 
 ##Historic Combinations
 
 historic.table <- function(sc1, sc2) {
-  hist.data <- historic.data %>% 
-    filter(N != 0)%>%
-    group_by(Combo,Tm_Last,Opp_Last)%>%
-    summarise(Games=sum(Games))%>%
-    as.data.frame%>%
-    mutate(Probs = round(Games/games,4))
+  hist.data <- historic.data[historic.data$N != 0,]
+  hist.data <- aggregate(Games~Combo+Tm_Last+Opp_Last,hist.data,sum)
+  hist.data$Probs <- round(hist.data$Games/games,4)
   
   par(font.lab=2)
   p <- with(hist.data, plot(Tm_Last, 9-Opp_Last, type='n',xlim=c(0,9),ylim=c(0,9),xlab='', ylab='Vertical Team', axes=FALSE))
@@ -189,8 +142,7 @@ historic.hist <- function(score1, score2) {
   
   input.combo <- paste(score1, score2, sep=' & ')
   
-  plot.data <- hist.data %>%
-    filter(Combo==input.combo)
+  plot.data <- hist.data[hist.data$Combo==input.combo,]
   
   g <- ggplot(plot.data, aes(x=N,y=Games)) +
     theme_bw() +
@@ -210,21 +162,16 @@ historic.pergame <- function(score1, score2) {
   
   input.combo <- paste(score1, score2, sep=' & ')
   
-  combo.data <- hist.data %>%
-    as.data.frame%>%
-    filter(Combo==input.combo)%>%
-    select(-Tm_Last,-Opp_Last)
+  combo.data <- hist.data[hist.data$Combo==input.combo,c(-2,-3)]
   
-  total.games <- combo.data %>%
-    group_by(Combo)%>%
-    summarise(Games = sum(Games))%>%
-    mutate(N = 'Total') %>%
-    mutate(Probability = '100%')%>%
-    select(Combo,N,Games,Probability)
+  total.games <- aggregate(Games~Combo,data=combo.data,sum)
+  total.games$N <- 'Total'
+  total.games$Probability = '100%'
+  total.games <- total.games[,c("Combo","N","Games","Probability")]
   
-  output <- combo.data %>%
-    mutate(Probability = paste(round((Games/sum(Games)*100),1),'%',sep=''))%>%
-    rbind(total.games)
+  combo.data$Probability <-  paste(round((combo.data$Games/sum(combo.data$Games)*100),1),'%',sep='')
+    
+  output <- rbind(combo.data,total.games)
   
   return(output)
   
@@ -236,14 +183,11 @@ historic.total <- function(score1, score2) {
   
   input.combo <- paste(score1, score2, sep=' & ')
   
-  combo.data <- hist.data %>%
-    filter(Combo==input.combo)
+  combo.data <- hist.data[hist.data$Combo==input.combo,]
   
-  output <- combo.data %>%
-    dplyr::mutate(Total.Occurances = sum(N*Games))%>%
-    as.data.frame()%>%
-    select(Combo, Total.Occurances)%>%
-    unique
+  combo.data$Total.Occurances <- sum(combo.data$N*combo.data$Games)
+  
+  output <- unique(combo.data[,c("Combo","Total.Occurances")])
   
   return(output)
   

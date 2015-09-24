@@ -146,4 +146,4 @@ Numbered.Score.Data2 <- Numbered.Score.Data2%>%
   select(-Change, -Next_Total)
 
 
-saveRDS(Numbered.Score.Data2, "App/Score_Data2.RDS")
+saveRDS(Numbered.Score.Data2, "../SquaresApp/Score_Data2.RDS")

@@ -61,7 +61,7 @@ tabPanel('App Documentation',
            strong("Coursera Data Science Specialization"),
            br(),
            br(),
-           p("Created By: Cody Henderson"),
+           p("Created By: crhenderson"),
            p("Created On: 2015-09-23"),
            br(),
            a(href="https://github.com/crhenderson/Super-Bowl-Squares-App","Github Repository")

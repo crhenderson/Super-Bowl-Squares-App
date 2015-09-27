@@ -1,0 +1,219 @@
+Super Bowl Squares
+========================================================
+author: crhenderson
+date: 2015-09-26
+
+[Github](https://github.com/crhenderson/Super-Bowl-Squares-App)
+
+```{r libraries, echo=FALSE, warning=FALSE}
+library(reshape2)
+library(ggplot2)
+library(nnet)
+library(knitr)
+```
+ 
+ 
+```{r read data, echo=FALSE, warning=FALSE, cache=TRUE}
+data <- readRDS("../SquaresApp/Score_Data2.RDS")
+fitN <- readRDS("../SquaresApp/nextfitN.RDS")
+fitA <- readRDS("../SquaresApp/nextfitA.RDS")
+fitB <- readRDS("../SquaresApp/nextfitB.RDS")
+ 
+#Turn off Scientific Notation
+options(scipen=999)
+```
+
+```{r create historic data, echo=FALSE, warning=FALSE, cache=TRUE}
+historic.data <- data[data$Score_Type != 'Start of Game',]
+historic.data <- aggregate(Score~Game+ Tm_Last+ Opp_Last, data=historic.data,length)
+names(historic.data)[4] <- "N"
+historic.data$Combo <- paste(historic.data$Tm_Last, historic.data$Opp_Last, sep=' & ')
+historic.data <- historic.data[,c("Combo", "Tm_Last", "Opp_Last", "Game", "N")]
+ 
+unique.games <- unique(historic.data$Game)
+ 
+unique.combo <- historic.data[,c("Combo", "Tm_Last", "Opp_Last")]
+unique.combo <- unique(unique.combo[order(unique.combo$Combo),] )
+ 
+together <- merge(unique.games,unique.combo)
+names(together)[1] <- "Game"
+together <- merge(together,historic.data,by=c("Game","Combo","Tm_Last","Opp_Last"),all.x=T)
+together$N[is.na(together$N)] <- 0
+ 
+historic.data <- aggregate(Game~Combo+Tm_Last+Opp_Last+N, data=together, length)
+names(historic.data)[5] <- "Games"
+ 
+games <- length(unique(data$Game))
+ 
+rm(together); rm(unique.combo); rm(unique.games);
+```
+
+What are Super Bowl Squares?
+========================================================
+<small>*Super Bowl Squares* is a betting game related to the NFL Super Bowl.  Each square in the 10x10 grid represents a combination of the last digit of each teams score.  Before the game starts, players buy squares and then the numbers 0:9 are randomly placed accross the top and side of the grid, ie, players blindly select squares.  
+Example: The Cowboys just kicked a field goal and the score is now Cowboys 24 - Patriots 17.  The last digits are 4 & 7 marked on the grid below.  The owner of that square wins $.</small>
+<center> 
+```{r example, echo=FALSE,fig.width=7,fig.height=4.5}
+example.table <- function() {
+  par(font.lab=2)
+  p <- plot(0:9, 0:9, type='n',xlim=c(0,9),ylim=c(0,9),xlab='', ylab='Patriots', axes=FALSE)
+  points(4,2,pch=19,col="firebrick1",cex=4)
+  abline(v=seq(.5,8.5,1))
+  abline(h=seq(.5,8.5,1))
+  axis(side=3, at=0:9, tick=FALSE, labels=0:9)
+  axis(side=2, at=0:9, tick=FALSE, labels=9:0)
+  mtext('Cowboys', side=3, line=3, font=2)
+  box()
+ 
+  return(p) 
+  
+}
+ 
+p<-example.table()
+```
+</center>
+
+Historic Data
+========================================================
+<small>One feature of this app is a breakdown of historical frequencies and empirical probabilities of different last digit combinations occuring.  That way you can see what your chances of winning are if you drew the 3 & 5 square for example.  The chart shows you how many games have had instances of 3 & 5.</small>
+ 
+```{r historic.pergame,echo=FALSE}
+historic.pergame <- function(score1, score2) {
+  hist.data <- historic.data
+ 
+  
+  input.combo <- paste(score1, score2, sep=' & ')
+ 
+  combo.data <- hist.data[hist.data$Combo==input.combo,c(-2,-3)]
+ 
+  total.games <- aggregate(Games~Combo,data=combo.data,sum)
+  total.games$N <- 'Total'
+  total.games$Probability = '100%'
+  total.games <- total.games[,c("Combo","N","Games","Probability")]
+ 
+  combo.data$Probability <-  paste(round((combo.data$Games/sum(combo.data$Games)*100),1),'%',sep='')
+   
+  output <- rbind(combo.data,total.games)
+  row.names(output) <- NULL
+ 
+  return(output)
+ 
+}  
+```
+<center>
+```{r display 1}
+kable(historic.pergame(3,5))
+```
+</center>
+Historic Data
+========================================================
+<small>The **Historic Data** tab also shows the probability that each number combo will occur at least once in a game.  3 & 5 is marked in red.</small>
+
+```{r historic.table,echo=FALSE}
+historic.table <- function(sc1, sc2) {
+  hist.data <- historic.data[historic.data$N != 0,]
+  hist.data <- aggregate(Games~Combo+Tm_Last+Opp_Last,hist.data,sum)
+  hist.data$Probs <- round(hist.data$Games/games,4)
+  
+  par(font.lab=2)
+  p <- with(hist.data, plot(Tm_Last, 9-Opp_Last, type='n',xlim=c(0,9),ylim=c(0,9),xlab='', ylab='Vertical Team', axes=FALSE))
+  points(sc1,9-sc2,pch=19,col="firebrick1",cex=4)
+  with(hist.data, text(Tm_Last, 9-Opp_Last, ifelse(Probs==0,'--',scales::percent(Probs)),offset=0.5, cex=1))
+  abline(v=seq(.5,8.5,1))
+  abline(h=seq(.5,8.5,1))
+  axis(side=3, at=0:9, tick=FALSE, labels=0:9)
+  axis(side=2, at=0:9, tick=FALSE, labels=9:0)
+  mtext('Horizontal Team', side=3, line=3, font=2)
+  box()
+  
+  return(p)  
+}
+``` 
+<center> 
+```{r display 2,fig.width=9,fig.height=6}
+p<-historic.table(3,5)
+```
+</center>
+Next Winning Square
+========================================================
+<small>The other feature of the app is to predict the next most likely winning square based on the quarter, total score, and score differential.  You can input the current teams and score.  Suppose the Cowboys are beating the Patriots 35-28 in the 3rd quarter and the next play is not going to be an extra point.  The **Next Winning Square** tab shows the probabilities for the next possible winning squares.</small>
+
+```{r prob function, echo=FALSE}
+probability.table <- function(score1, score2, quarter, eligibility,team1,team2) {
+#What is score difference between team A and team B
+deficit <- score1 - score2
+#What is the total score
+total <- score1 + score2
+#Create dataframe of new data to predict using models.
+df <- data.frame(Quarter = factor(quarter, levels = c(1,2,3,4,5)), Total_Score = total, Deficit = deficit)
+
+##Predict probabilities of next score type based on extra point elligibility.
+if(eligibility == 0) {
+  pred <- predict(fitN,df,"probs")
+  squares <- data.frame(new.score1 = c(rep(score1,4), score1+2, score1+3,score1+6),
+                        new.score2 = c(score2, score2+2, score2+3,score2+6, rep(score2,3)),
+                        Probability = c(pred["End of Game"],pred["Team B Safety"],pred["Team B Field Goal"],
+                                        pred["Team B Touchdown"],pred["Team A Safety"],pred["Team A Field Goal"],
+                                        pred["Team A Touchdown"])
+                        )
+} else if (eligibility == 1) {
+  pred <- predict(fitA,df,"probs")
+  squares <- data.frame(new.score1 = c(rep(score1,5), score1+1, score1+2,score1+3, score1+6),
+                        new.score2 = c(score2, score2+1,score2+2, score2+3,score2+6, rep(score2,4)),
+                        Probability = c(pred["End of Game"],pred["Team B Extra Point"],pred["Team B Two-Point Conversionl"],
+                                        pred["Team B Field Goal"],pred["Team B Touchdown"],pred["Team A Extra Point"],
+                                        pred["Team A Saftey"]+pred["Team A Two-Point Conversion"],pred["Team A Field Goal"],
+                                        pred["Team A Touchdown"])
+  )
+} else if (eligibility == 2) {
+  pred <- predict(fitB,df,"probs")
+  squares <- data.frame(new.score1 = c(rep(score1,5), score1+2,score1+3, score1+6),
+                        new.score2 = c(score2, score2+1,score2+2, score2+3,score2+6, rep(score2,3)),
+                        Probability = c(pred["End of Game"],pred["Team B Extra Point"],pred["Team B Two-Point Conversionl"]+pred["Team B Safety"],
+                                        pred["Team B Field Goal"],pred["Team B Touchdown"],
+                                        pred["Team A Saftey"],pred["Team A Field Goal"],
+                                        pred["Team A Touchdown"])
+  )
+}  else pred <- NA
+
+
+##Create table of all last digit combinations  
+squares$new.score1 <- squares$new.score1%%10
+squares$new.score2 <- squares$new.score2%%10
+squares$Probability <- squares$Probability*100
+
+options <- data.frame(new.score1 = c(rep(0,10),rep(1,10),rep(2,10),rep(3,10),rep(4,10),rep(5,10),rep(6,10),rep(7,10),rep(8,10),rep(9,10)),
+                      new.score2 = rep(0:9,10))
+
+##Merge predicted probabilities with score combinations
+final <- merge(options,squares,by=c("new.score1","new.score2"),all.x=T)
+final <- final[,c("new.score1", "new.score2", "Probability")]
+
+final$Probability[is.na(final$Probability)] <- 0
+final$Probability <- round(final$Probability,1)
+
+
+##Create custom table using blank scatterplots
+sc1 <- score1%%10
+sc2 <- 9-score2%%10
+par(font.lab=2)
+p <- with(final, plot(new.score1, 9-new.score2, type='n',xlim=c(0,9),ylim=c(0,9),xlab='', ylab=team2, axes=FALSE))
+points(sc1,sc2,pch=19,col="red",cex=4)
+with(final, text(new.score1, 9-new.score2, ifelse(Probability==0,'--',paste0(Probability,'%')),offset=0.5, cex=1))
+abline(v=seq(.5,8.5,1))
+abline(h=seq(.5,8.5,1))
+axis(side=3, at=0:9, tick=FALSE, labels=0:9)
+axis(side=2, at=0:9, tick=FALSE, labels=9:0)
+mtext(team1, side=3, line=3, font=2)
+mtext("Red dot represents current square based on input score.",side=1,line=1,font=3)
+box()
+
+return(p)
+
+}
+```
+<center>
+```{r prob output,fig.width=9,fig.height=5}
+p<-probability.table(35, 28, 3, 1,"Cowboys","Patriots")
+```
+</center>

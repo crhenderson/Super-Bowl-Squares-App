@@ -1,0 +1,129 @@
+---
+title: "Super Bowl Squares"
+author: "crhenderson"
+date: "September 24, 2015"
+output:
+  ioslides_presentation:
+    smaller: yes
+---
+ 
+```{r libraries, echo=FALSE, warning=FALSE}
+library(reshape2)
+library(ggplot2)
+library(nnet)
+```
+ 
+ 
+```{r read data, echo=FALSE, warning=FALSE, cache=TRUE}
+data <- readRDS("Score_Data2.RDS")
+fitN <- readRDS("nextfitN.RDS")
+fitA <- readRDS("nextfitA.RDS")
+fitB <- readRDS("nextfitB.RDS")
+ 
+#Turn off Scientific Notation
+options(scipen=999)
+```
+ 
+ 
+```{r create historic data, echo=FALSE, warning=FALSE, cache=TRUE}
+historic.data <- data[data$Score_Type != 'Start of Game',]
+historic.data <- aggregate(Score~Game+ Tm_Last+ Opp_Last, data=historic.data,length)
+names(historic.data)[4] <- "N"
+historic.data$Combo <- paste(historic.data$Tm_Last, historic.data$Opp_Last, sep=' & ')
+historic.data <- historic.data[,c("Combo", "Tm_Last", "Opp_Last", "Game", "N")]
+ 
+unique.games <- unique(historic.data$Game)
+ 
+unique.combo <- historic.data[,c("Combo", "Tm_Last", "Opp_Last")]
+unique.combo <- unique(unique.combo[order(unique.combo$Combo),] )
+ 
+together <- merge(unique.games,unique.combo)
+names(together)[1] <- "Game"
+together <- merge(together,historic.data,by=c("Game","Combo","Tm_Last","Opp_Last"),all.x=T)
+together$N[is.na(together$N)] <- 0
+ 
+historic.data <- aggregate(Game~Combo+Tm_Last+Opp_Last+N, data=together, length)
+names(historic.data)[5] <- "Games"
+ 
+games <- length(unique(data$Game))
+ 
+rm(together); rm(unique.combo); rm(unique.games);
+```
+ 
+ 
+## What are **Super Bowl Squares**?
+*Super Bowl Squares* is a betting game related to the NFL Super Bowl.  Each square in the 10x10 grid represents a combination of the last digit of each teams score.  Before the game starts, players buy squares and then the numbers 0:9 are randomly placed accross the top and side of the grid, ie, players blindly select squares.
+ 
+Example: The Cowboys just kicked a field goal and the score is now Cowboys 24 - Patriots 17.  The last digits are 4 & 7 marked on the grid below.  The owner of that square wins $.
+ 
+```{r example, echo=FALSE}
+example.table <- function() {
+  par(font.lab=2)
+  p <- plot(0:9, 0:9, type='n',xlim=c(0,9),ylim=c(0,9),xlab='', ylab='Patriots', axes=FALSE)
+  points(4,2,pch=19,col="firebrick1",cex=4)
+  abline(v=seq(.5,8.5,1))
+  abline(h=seq(.5,8.5,1))
+  axis(side=3, at=0:9, tick=FALSE, labels=0:9)
+  axis(side=2, at=0:9, tick=FALSE, labels=9:0)
+  mtext('Cowboys', side=3, line=3, font=2)
+  box()
+ 
+  return(p) 
+  
+}
+ 
+example.table()
+```
+ 
+## Historic Data
+One feature of this app is a breakdown of historical frequencies and empirical probabilities of different last digit combinations occuring.  That way you can see what your chances of winning are if you drew the 3 & 5 square for example.
+ 
+```{r historic.pergame,echo=FALSE}
+historic.pergame <- function(score1, score2) {
+  hist.data <- historic.data
+ 
+  
+  input.combo <- paste(score1, score2, sep=' & ')
+ 
+  combo.data <- hist.data[hist.data$Combo==input.combo,c(-2,-3)]
+ 
+  total.games <- aggregate(Games~Combo,data=combo.data,sum)
+  total.games$N <- 'Total'
+  total.games$Probability = '100%'
+  total.games <- total.games[,c("Combo","N","Games","Probability")]
+ 
+  combo.data$Probability <-  paste(round((combo.data$Games/sum(combo.data$Games)*100),1),'%',sep='')
+   
+  output <- rbind(combo.data,total.games)
+ 
+  return(output)
+ 
+}  
+```
+ 
+```{r historic histogram, echo=FALSE}
+historic.total <- function(score1, score2) {
+  hist.data <- historic.data
+ 
+  
+  input.combo <- paste(score1, score2, sep=' & ')
+ 
+  combo.data <- hist.data[hist.data$Combo==input.combo,]
+ 
+  combo.data$Total.Occurances <- sum(combo.data$N*combo.data$Games)
+ 
+  output <- unique(combo.data[,c("Combo","Total.Occurances")])
+ 
+  return(output)
+ 
+} 
+ 
+```
+ 
+ 
+ 
+ 
+ 
+## Next Winning Square
+The other feature of the app is to predict the next most likely winning square based on the quarter, total score, and score differential.  You can input the current teams and score
+ 
